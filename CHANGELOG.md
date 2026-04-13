@@ -2,6 +2,11 @@
 
 All notable changes to the **Instagram Reels Sidecar** extension will be documented in this file.
 
+## [0.0.5] - 2026-04-13
+
+### Changed
+- Removed browser-based reel browsing from the webview so reel playback stays inside VS Code after login.
+
 ## [0.0.4] - 2026-04-13
 
 ### Added

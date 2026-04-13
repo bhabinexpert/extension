@@ -11,7 +11,7 @@ Browse Instagram Reels right inside VS Code while you code. Login through Chrome
 - **Login via Chrome** -- Opens Instagram login in your default browser. No embedded login hassles.
 - **Reels in a Sidebar Panel** -- View Instagram Reels in a dedicated VS Code panel alongside your code.
 - **Add Reels by URL** -- Paste any Instagram Reel URL or shortcode to add it to your queue.
-- **Browse Instagram** -- One-click button opens Instagram Reels in Chrome so you can find new content.
+- **All Reel Playback in VS Code** -- After login, reels are played in the VS Code panel instead of a browser tab.
 - **Keyboard Navigation** -- Use `Arrow Up` / `Arrow Down` to move between reels.
 - **Mouse Wheel Navigation** -- Scroll through reels with your mouse wheel.
 - **On-Screen Controls** -- Click the up/down arrow buttons to navigate.
@@ -54,7 +54,9 @@ Paste a full URL like `https://www.instagram.com/reel/ABC123/` or just the short
 
 ### 4. Browse for New Reels
 
-Click **"Browse"** in the toolbar to open `instagram.com/reels/` in Chrome. Find reels you like, copy their URLs, and add them to your queue.
+Use the **+ Add** button or paste a reel URL/shortcode to load it directly into the VS Code panel.
+
+If you need to discover a reel, open Instagram separately in your browser, copy the reel URL, and add it here.
 
 ---
 

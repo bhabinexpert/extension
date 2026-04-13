@@ -210,9 +210,6 @@ function openReelsPanel(
           await vscode.commands.executeCommand("instagramSidecar.addReel");
         } else if (message.type === "login") {
           await vscode.commands.executeCommand("instagramSidecar.openLogin");
-        } else if (message.type === "browseReels") {
-          const url = vscode.Uri.parse("https://www.instagram.com/reels/");
-          await vscode.env.openExternal(url);
         }
       },
       undefined,
@@ -494,7 +491,6 @@ function getReelsWebviewHtml(reels: string[]): string {
         <span class="counter" id="counter"></span>
       </div>
       <div class="toolbar-right">
-        <button class="btn" id="btnBrowse" title="Find reels in browser">Browse</button>
         <button class="btn" id="btnAdd" title="Add a reel URL">+ Add</button>
         <button class="btn" id="btnRefresh" title="Refresh current reel">Refresh</button>
       </div>
@@ -517,10 +513,6 @@ function getReelsWebviewHtml(reels: string[]): string {
     // --- Buttons ---
     document.getElementById("btnAdd").addEventListener("click", () => {
       vscodeApi.postMessage({ type: "addReelRequest" });
-    });
-
-    document.getElementById("btnBrowse").addEventListener("click", () => {
-      vscodeApi.postMessage({ type: "browseReels" });
     });
 
     document.getElementById("btnRefresh").addEventListener("click", () => {
@@ -578,7 +570,7 @@ function getReelsWebviewHtml(reels: string[]): string {
         <div class="empty-state">
           <div class="empty-state-icon">&#127910;</div>
           <h2>No Reels Added Yet</h2>
-          <p>Browse Instagram in your browser to find reels, then add them here by URL or shortcode.</p>
+          <p>Login opens Instagram in your browser for authentication, but reel playback stays inside this VS Code tab.</p>
           <div class="input-section">
             <input
               type="text"
@@ -588,7 +580,6 @@ function getReelsWebviewHtml(reels: string[]): string {
             />
             <div class="button-row">
               <button class="btn btn-primary" id="emptyAddBtn">Add Reel</button>
-              <button class="btn" id="emptyBrowseBtn">Browse Instagram</button>
               <button class="btn" id="emptyLoginBtn">Login</button>
             </div>
           </div>
@@ -611,10 +602,6 @@ function getReelsWebviewHtml(reels: string[]): string {
         } else {
           vscodeApi.postMessage({ type: "addReelRequest" });
         }
-      });
-
-      document.getElementById("emptyBrowseBtn").addEventListener("click", () => {
-        vscodeApi.postMessage({ type: "browseReels" });
       });
 
       document.getElementById("emptyLoginBtn").addEventListener("click", () => {
