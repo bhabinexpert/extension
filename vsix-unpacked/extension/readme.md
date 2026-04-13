@@ -55,6 +55,6 @@ Run the extension in VS Code:
 
 ## Notes
 
-- On Windows, the current implementation tries to launch Microsoft Edge in app mode.
-- On macOS and Linux, the command may need to be adjusted based on the browser installed on the machine.
+- The extension opens Instagram in your default browser via VS Code's external browser API.
+- If your system has no browser association configured, update your OS default browser settings.
 - `Next Reel` and `Previous Reel` currently provide user guidance instead of direct browser automation.
