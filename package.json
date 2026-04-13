@@ -1,8 +1,8 @@
 {
   "name": "instagram-sidecar-vscode",
   "displayName": "Instagram Reels Sidecar",
-  "description": "Professional VS Code extension for opening Instagram in a focused in-editor experience with streamlined navigation controls for Reels browsing while coding.",
-  "version": "0.0.1",
+  "description": "Browse Instagram Reels in a VS Code sidebar panel while coding. Login via Chrome, navigate reels with arrow keys and mouse wheel.",
+  "version": "0.0.2",
   "publisher": "bhabinexpert",
   "author": "bhabinexpert",
   "license": "MIT",
@@ -29,23 +29,21 @@
     "productivity",
     "vscode-extension"
   ],
-  "activationEvents": [
-    "onCommand:instagramSidecar.openLogin",
-    "onCommand:instagramSidecar.openReels",
-    "onCommand:instagramSidecar.scrollNext",
-    "onCommand:instagramSidecar.scrollPrevious",
-    "onCommand:instagramSidecar.refresh"
-  ],
+  "activationEvents": [],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
         "command": "instagramSidecar.openLogin",
-        "title": "Instagram Sidecar: Open Login"
+        "title": "Instagram Sidecar: Login"
       },
       {
         "command": "instagramSidecar.openReels",
         "title": "Instagram Sidecar: Open Reels"
+      },
+      {
+        "command": "instagramSidecar.addReel",
+        "title": "Instagram Sidecar: Add Reel"
       },
       {
         "command": "instagramSidecar.scrollNext",
@@ -57,7 +55,25 @@
       },
       {
         "command": "instagramSidecar.refresh",
-        "title": "Instagram Sidecar: Refresh Sidecar"
+        "title": "Instagram Sidecar: Refresh"
+      },
+      {
+        "command": "instagramSidecar.logout",
+        "title": "Instagram Sidecar: Logout"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "instagramSidecar.scrollNext",
+        "key": "ctrl+alt+down",
+        "mac": "cmd+alt+down",
+        "when": "activeWebviewPanelId == 'instagramSidecar'"
+      },
+      {
+        "command": "instagramSidecar.scrollPrevious",
+        "key": "ctrl+alt+up",
+        "mac": "cmd+alt+up",
+        "when": "activeWebviewPanelId == 'instagramSidecar'"
       }
     ],
     "configuration": {
@@ -68,14 +84,14 @@
           "default": 430,
           "minimum": 320,
           "maximum": 900,
-          "description": "Width of the external browser sidecar window in pixels."
+          "description": "Width of the sidecar panel in pixels (hint only, VS Code manages actual width)."
         },
         "instagramSidecar.sidecarHeight": {
           "type": "number",
           "default": 900,
           "minimum": 480,
           "maximum": 1600,
-          "description": "Height of the external browser sidecar window in pixels."
+          "description": "Height of the sidecar panel in pixels (hint only, VS Code manages actual height)."
         }
       }
     }

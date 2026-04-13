@@ -1,9 +1,14 @@
 .vscode/**
 .sixth/**
+.kilo/**
 src/**
 node_modules/**
 .gitignore
-README.md
 tsconfig.json
 **/*.map
 **/*.ts
+vsix-unpacked/**
+vsix-inspect/**
+*.vsix
+*.zip
+make-icon.ps1
