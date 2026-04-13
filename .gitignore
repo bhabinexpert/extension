@@ -1,0 +1,8 @@
+node_modules/
+.vscode/
+vsix-unpacked/
+vsix-inspect/
+*.vsix
+*.zip
+*.tsbuildinfo
+_ul

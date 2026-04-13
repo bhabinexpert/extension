@@ -2,6 +2,20 @@
 
 All notable changes to the **Instagram Reels Sidecar** extension will be documented in this file.
 
+## [0.0.4] - 2026-04-13
+
+### Added
+- GitHub Actions publish workflow for Visual Studio Marketplace releases.
+- Repo-level ignore rules for generated package artifacts and TypeScript build cache.
+
+### Changed
+- Public release metadata updated for the latest Marketplace-ready build.
+
+## [0.0.3] - 2026-04-13
+
+### Changed
+- Prepared the extension for public Marketplace publishing with cleaned packaging and installable VSIX output.
+
 ## [0.0.2] - 2026-04-13
 
 ### Added

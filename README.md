@@ -134,6 +134,15 @@ npm run package
 2. Press `F5` to launch the Extension Development Host
 3. Open the Command Palette and run `Instagram Sidecar: Login`
 
+## Publishing
+
+This repository is set up to publish to the Visual Studio Marketplace through GitHub Actions.
+
+1. Create or verify the `bhabinexpert` Marketplace publisher account.
+2. Add a GitHub repository secret named `VSCE_PAT` with a valid VS Code Marketplace personal access token.
+3. Push a tag like `v0.0.4` or run the `Publish VS Code Extension` workflow manually from GitHub Actions.
+4. The workflow runs `npm ci`, compiles the extension, and publishes with `vsce`.
+
 ---
 
 ## Requirements
@@ -145,6 +154,15 @@ npm run package
 ---
 
 ## Release Notes
+
+### 0.0.4
+
+- Added Marketplace publish workflow and release documentation.
+- Cleaned generated artifacts from the code base and tightened ignore rules.
+
+### 0.0.3
+
+- Prepared the extension for public Marketplace publishing with cleaned packaging and installable VSIX output.
 
 ### 0.0.2
 

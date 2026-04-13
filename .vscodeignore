@@ -12,3 +12,5 @@ vsix-inspect/**
 *.vsix
 *.zip
 make-icon.ps1
+_ul
+**/*.tsbuildinfo
