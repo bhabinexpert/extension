@@ -1,10 +1,9 @@
 {
   "name": "instagram-sidecar-vscode",
   "displayName": "Instagram Reels Sidecar",
-  "description": "Professional VS Code extension for opening Instagram in a focused in-editor experience with streamlined navigation controls for Reels browsing while coding.",
+  "description": "VS Code extension that opens Instagram in an external browser sidecar while you keep coding.",
   "version": "0.0.1",
-  "publisher": "bhabinexpert",
-  "author": "bhabinexpert",
+  "publisher": "bhabin-local",
   "license": "MIT",
   "icon": "media/icon.png",
   "repository": {
