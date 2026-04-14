@@ -24,12 +24,13 @@ export function activate(context: vscode.ExtensionContext) {
   const openLogin = vscode.commands.registerCommand(
     "instagramSidecar.openLogin",
     async () => {
-      const loginUrl = "https://www.instagram.com/accounts/login/";
-      await openInstagramInVsCodeTab(loginUrl);
+      // Instagram authentication should happen in a real browser session.
+      const loginUrl = vscode.Uri.parse("https://www.instagram.com/accounts/login/");
+      await vscode.env.openExternal(loginUrl);
 
       // Show a message asking the user to confirm once logged in
       const result = await vscode.window.showInformationMessage(
-        "Instagram login opened in a VS Code tab. After logging in, click 'I'm Logged In' to continue.",
+        "Instagram login page opened in your browser. After logging in, click 'I'm Logged In' to continue.",
         "I'm Logged In",
         "Cancel"
       );
@@ -38,9 +39,9 @@ export function activate(context: vscode.ExtensionContext) {
         isLoggedIn = true;
         await context.globalState.update("instagramLoggedIn", true);
         vscode.window.showInformationMessage(
-          "Login confirmed. Opening Instagram Reels in VS Code."
+          "Login confirmed. Opening Reels Library in VS Code."
         );
-        await openInstagramInVsCodeTab("https://www.instagram.com/reels/");
+        openReelsPanel(context, savedReels, "library");
       }
     }
   );
@@ -50,7 +51,7 @@ export function activate(context: vscode.ExtensionContext) {
     async () => {
       if (!isLoggedIn) {
         const result = await vscode.window.showInformationMessage(
-          "Login is required first. Open Instagram login in VS Code now?",
+          "Login is required first. Open Instagram login now?",
           "Login",
           "Cancel"
         );
@@ -61,7 +62,7 @@ export function activate(context: vscode.ExtensionContext) {
         return;
       }
 
-      await openInstagramInVsCodeTab("https://www.instagram.com/reels/");
+      openReelsPanel(context, savedReels, "library");
     }
   );
 
@@ -158,15 +159,6 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {}
-
-async function openInstagramInVsCodeTab(url: string): Promise<void> {
-  try {
-    await vscode.commands.executeCommand("simpleBrowser.show", url);
-  } catch {
-    // Fallback if Simple Browser is unavailable in the current environment.
-    await vscode.env.openExternal(vscode.Uri.parse(url));
-  }
-}
 
 function extractShortcode(input: string): string | null {
   // If it's already a shortcode (alphanumeric + _ and -)
