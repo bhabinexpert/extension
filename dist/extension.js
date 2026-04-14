@@ -168,6 +168,23 @@ function openReelsPanel(context, reels, mode = "player") {
             else if (message.type === "addReelRequest") {
                 await vscode.commands.executeCommand("instagramSidecar.addReel");
             }
+            else if (message.type === "addReelFromInput") {
+                const shortcode = typeof message.shortcode === "string"
+                    ? extractShortcode(message.shortcode.trim())
+                    : null;
+                if (!shortcode) {
+                    vscode.window.showErrorMessage("Invalid reel URL or shortcode. Please paste a valid Instagram reel URL.");
+                    return;
+                }
+                if (!reels.includes(shortcode)) {
+                    reels.push(shortcode);
+                    await context.globalState.update("instagramReels", reels);
+                }
+                panel?.webview.postMessage({
+                    type: "focusReel",
+                    shortcode,
+                });
+            }
             else if (message.type === "login") {
                 await vscode.commands.executeCommand("instagramSidecar.openLogin");
             }
@@ -951,11 +968,10 @@ function getReelsWebviewHtml(reels) {
           // Try to extract shortcode client-side
           const shortcode = extractShortcodeClient(value);
           if (shortcode) {
-            reels.push(shortcode);
-            currentIndex = reels.length - 1;
-            renderCurrentReel();
-            // Also persist on extension side
-            vscodeApi.postMessage({ type: "addReelRequest" });
+            vscodeApi.postMessage({ type: "addReelFromInput", shortcode });
+            input.value = "";
+          } else {
+            vscodeApi.postMessage({ type: "addReelFromInput", shortcode: value });
           }
         } else {
           vscodeApi.postMessage({ type: "addReelRequest" });
@@ -1051,6 +1067,16 @@ function getReelsWebviewHtml(reels) {
         if (message.shortcode && !reels.includes(message.shortcode)) {
           reels.push(message.shortcode);
           currentIndex = reels.length - 1;
+          renderCurrentReel();
+        }
+      } else if (message.type === "focusReel") {
+        if (message.shortcode && !reels.includes(message.shortcode)) {
+          reels.push(message.shortcode);
+        }
+
+        const targetIndex = reels.indexOf(message.shortcode);
+        if (targetIndex >= 0) {
+          currentIndex = targetIndex;
           renderCurrentReel();
         }
       }
