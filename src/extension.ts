@@ -1003,48 +1003,20 @@ function getReelsWebviewHtml(reels: string[]): string {
         <div class="empty-state">
           <div class="empty-state-icon">&#127910;</div>
           <h2>No Reels Added Yet</h2>
-          <p>Login opens Instagram in your browser for authentication, but reel playback stays inside this VS Code tab.</p>
-          <div class="input-section">
-            <input
-              type="text"
-              class="url-input"
-              id="reelInput"
-              placeholder="Paste reel URL or shortcode..."
-            />
-            <div class="button-row">
-              <button class="btn btn-primary" id="emptyAddBtn">Add Reel</button>
-              <button class="btn" id="emptyLoginBtn">Login</button>
-            </div>
+          <p>Open the reel library to browse popular reels inside VS Code, or log in first to keep your saved reels ready here.</p>
+          <div class="button-row">
+            <button class="btn btn-primary" id="emptyBrowseBtn">Open Reel Library</button>
+            <button class="btn" id="emptyLoginBtn">Login</button>
           </div>
         </div>
       \`;
 
-      document.getElementById("emptyAddBtn").addEventListener("click", () => {
-        const input = document.getElementById("reelInput");
-        const value = input.value.trim();
-        if (value) {
-          // Try to extract shortcode client-side
-          const shortcode = extractShortcodeClient(value);
-          if (shortcode) {
-            vscodeApi.postMessage({ type: "addReelFromInput", shortcode });
-            input.value = "";
-          } else {
-            vscodeApi.postMessage({ type: "addReelFromInput", shortcode: value });
-          }
-        } else {
-          vscodeApi.postMessage({ type: "addReelRequest" });
-        }
+      document.getElementById("emptyBrowseBtn").addEventListener("click", () => {
+        vscodeApi.postMessage({ type: "switchMode", mode: "library" });
       });
 
       document.getElementById("emptyLoginBtn").addEventListener("click", () => {
         vscodeApi.postMessage({ type: "login" });
-      });
-
-      // Allow pressing Enter in the input
-      document.getElementById("reelInput").addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-          document.getElementById("emptyAddBtn").click();
-        }
       });
     }
 
