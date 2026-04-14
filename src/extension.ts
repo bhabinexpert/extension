@@ -2,9 +2,17 @@ import * as vscode from "vscode";
 
 let panel: vscode.WebviewPanel | undefined;
 let isLoggedIn = false;
+let currentMode: "library" | "player" = "library";
 
-// Popular/trending Instagram reel shortcodes — users can also add their own
+// Popular/trending Instagram reel shortcodes for browsing
 const DEFAULT_REELS: string[] = [];
+const POPULAR_REELS: string[] = [
+  "C_r5IhRr9QZ",
+  "C_rxn7LR0T3",
+  "C_rwiXVpZyN",
+  "C_tNEY_V0b9",
+  "C_sKp8RqY1L"
+];
 
 export function activate(context: vscode.ExtensionContext) {
   // Restore login state from global state
@@ -35,7 +43,7 @@ export function activate(context: vscode.ExtensionContext) {
         );
 
         // Auto-open the reels panel
-        openReelsPanel(context, savedReels);
+        openReelsPanel(context, savedReels, "library");
       }
     }
   );
@@ -43,22 +51,8 @@ export function activate(context: vscode.ExtensionContext) {
   const openReels = vscode.commands.registerCommand(
     "instagramSidecar.openReels",
     async () => {
-      if (!isLoggedIn) {
-        const result = await vscode.window.showWarningMessage(
-          "You need to log in to Instagram first to view reels.",
-          "Open Login",
-          "Continue Anyway"
-        );
-
-        if (result === "Open Login") {
-          await vscode.commands.executeCommand("instagramSidecar.openLogin");
-          return;
-        } else if (result !== "Continue Anyway") {
-          return;
-        }
-      }
-
-      openReelsPanel(context, savedReels);
+      // Open in library mode by default for browsing
+      openReelsPanel(context, savedReels, "library");
     }
   );
 
@@ -120,10 +114,14 @@ export function activate(context: vscode.ExtensionContext) {
     "instagramSidecar.refresh",
     async () => {
       if (panel) {
-        panel.webview.html = getReelsWebviewHtml(savedReels);
+        if (currentMode === "library") {
+          panel.webview.html = getLibraryWebviewHtml(savedReels);
+        } else {
+          panel.webview.html = getReelsWebviewHtml(savedReels);
+        }
         return;
       }
-      openReelsPanel(context, savedReels);
+      openReelsPanel(context, savedReels, currentMode);
     }
   );
 
@@ -180,7 +178,8 @@ function extractShortcode(input: string): string | null {
 
 function openReelsPanel(
   context: vscode.ExtensionContext,
-  reels: string[]
+  reels: string[],
+  mode: "library" | "player" = "player"
 ) {
   if (!panel) {
     panel = vscode.window.createWebviewPanel(
@@ -210,6 +209,22 @@ function openReelsPanel(
           await vscode.commands.executeCommand("instagramSidecar.addReel");
         } else if (message.type === "login") {
           await vscode.commands.executeCommand("instagramSidecar.openLogin");
+        } else if (message.type === "switchMode") {
+          currentMode = message.mode;
+          if (panel) {
+            if (currentMode === "library") {
+              panel.webview.html = getLibraryWebviewHtml(reels);
+            } else {
+              panel.webview.html = getReelsWebviewHtml(reels);
+            }
+          }
+        } else if (message.type === "addFromLibrary") {
+          const shortcode = message.shortcode;
+          if (shortcode && !reels.includes(shortcode)) {
+            reels.push(shortcode);
+            await context.globalState.update("instagramReels", reels);
+            vscode.window.showInformationMessage(`Reel added! (${shortcode})`);
+          }
         }
       },
       undefined,
@@ -217,8 +232,389 @@ function openReelsPanel(
     );
   }
 
-  panel.webview.html = getReelsWebviewHtml(reels);
+  currentMode = mode;
+  if (currentMode === "library") {
+    panel.webview.html = getLibraryWebviewHtml(reels);
+  } else {
+    panel.webview.html = getReelsWebviewHtml(reels);
+  }
   panel.reveal(vscode.ViewColumn.Beside);
+}
+
+function getLibraryWebviewHtml(reels: string[]): string {
+  const reelsJson = JSON.stringify(reels);
+  const popularReelsJson = JSON.stringify(POPULAR_REELS);
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'none'; frame-src https://www.instagram.com https://*.instagram.com; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src https://www.instagram.com https://*.instagram.com;"
+  />
+  <title>Instagram Reels Library</title>
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      height: 100%;
+      background: #0a0a0a;
+      color: #e2e8f0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    .app {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background: #111;
+      border-bottom: 1px solid #222;
+      flex-shrink: 0;
+      gap: 8px;
+    }
+
+    .toolbar-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #e2e8f0;
+    }
+
+    .btn {
+      background: #1f1f1f;
+      border: 1px solid #333;
+      color: #cbd5e1;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+
+    .btn:hover {
+      background: #2a2a2a;
+      border-color: #444;
+      color: #fff;
+    }
+
+    .search-section {
+      display: flex;
+      padding: 12px;
+      background: #111;
+      border-bottom: 1px solid #222;
+      flex-shrink: 0;
+      gap: 8px;
+    }
+
+    .search-input {
+      flex: 1;
+      padding: 8px 12px;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 12px;
+      outline: none;
+    }
+
+    .search-input:focus {
+      border-color: #e1306c;
+    }
+
+    .search-input::placeholder {
+      color: #555;
+    }
+
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+    }
+
+    .section-header {
+      font-size: 12px;
+      font-weight: 600;
+      color: #e2e8f0;
+      margin: 16px 0 8px 0;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .section-header:first-child {
+      margin-top: 0;
+    }
+
+    .reel-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .reel-card {
+      position: relative;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      overflow: hidden;
+      aspect-ratio: 9 / 16;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .reel-card:hover {
+      border-color: #e1306c;
+      transform: translateY(-2px);
+    }
+
+    .reel-embed iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      background: #000;
+    }
+
+    .add-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: #e1306c;
+      border: none;
+      color: #fff;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.2s;
+      z-index: 10;
+    }
+
+    .reel-card:hover .add-btn {
+      opacity: 1;
+    }
+
+    .add-btn:hover {
+      background: #c13584;
+    }
+
+    .add-btn.added {
+      background: #4ade80;
+      cursor: default;
+      opacity: 1;
+    }
+
+    .empty-section {
+      font-size: 12px;
+      color: #888;
+      padding: 8px;
+      text-align: center;
+    }
+
+    .sticky-play {
+      position: sticky;
+      bottom: 0;
+      padding: 12px;
+      background: linear-gradient(to top, #0a0a0a, rgba(10, 10, 10, 0.8));
+      border-top: 1px solid #222;
+    }
+
+    .play-btn {
+      width: 100%;
+      padding: 10px;
+      background: #e1306c;
+      border: none;
+      color: #fff;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .play-btn:hover {
+      background: #c13584;
+    }
+
+    .play-btn:disabled {
+      background: #666;
+      cursor: default;
+      opacity: 0.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="toolbar">
+      <span class="toolbar-title">📲 Browse Reels</span>
+    </div>
+
+    <div class="search-section">
+      <input
+        type="text"
+        class="search-input"
+        id="searchInput"
+        placeholder="Search reel URL, shortcode...  "
+      />
+    </div>
+
+    <div class="content" id="content">
+      <div class="section-header">Popular Reels</div>
+      <div class="reel-grid" id="popularGrid"></div>
+
+      <div id="yourReelsSection" style="display: none;">
+        <div class="section-header">Your Added Reels</div>
+        <div class="reel-grid" id="yourReelsGrid"></div>
+      </div>
+    </div>
+
+    <div class="sticky-play">
+      <button class="play-btn" id="playBtn" disabled>Play My Reels</button>
+    </div>
+  </div>
+
+  <script>
+    const vscodeApi = acquireVsCodeApi();
+    let reels = ${reelsJson};
+    const popularReels = ${popularReelsJson};
+
+    const searchInput = document.getElementById("searchInput");
+    const popularGrid = document.getElementById("popularGrid");
+    const yourReelsSection = document.getElementById("yourReelsSection");
+    const yourReelsGrid = document.getElementById("yourReelsGrid");
+    const playBtn = document.getElementById("playBtn");
+
+    function renderPopularReels() {
+      popularGrid.innerHTML = "";
+      popularReels.forEach((shortcode) => {
+        const card = createReelCard(shortcode, false);
+        popularGrid.appendChild(card);
+      });
+    }
+
+    function renderUserReels() {
+      if (reels.length === 0) {
+        yourReelsSection.style.display = "none";
+        playBtn.disabled = true;
+      } else {
+        yourReelsSection.style.display = "block";
+        playBtn.disabled = false;
+        yourReelsGrid.innerHTML = "";
+        reels.forEach((shortcode) => {
+          const card = createReelCard(shortcode, true);
+          yourReelsGrid.appendChild(card);
+        });
+      }
+    }
+
+    function createReelCard(shortcode, isUserReel) {
+      const card = document.createElement("div");
+      card.className = "reel-card";
+
+      const embedUrl = "https://www.instagram.com/reel/" + shortcode + "/embed/";
+
+      card.innerHTML = \`
+        <iframe
+          src="\${embedUrl}"
+          allow="autoplay; clipboard-write; encrypted-media; picture-in-picture"
+          loading="lazy"
+        ></iframe>
+        <button class="add-btn \${isUserReel ? 'added' : ''}" data-shortcode="\${shortcode}">
+          \${isUserReel ? '✓ Added' : '+ Add'}
+        </button>
+      \`;
+
+      const addBtn = card.querySelector(".add-btn");
+      if (!isUserReel) {
+        addBtn.addEventListener("click", () => addReel(shortcode, addBtn));
+      }
+
+      return card;
+    }
+
+    function addReel(shortcode, btn) {
+      if (!reels.includes(shortcode)) {
+        reels.push(shortcode);
+        vscodeApi.postMessage({
+          type: "addFromLibrary",
+          shortcode: shortcode
+        });
+        btn.textContent = "✓ Added";
+        btn.classList.add("added");
+        btn.disabled = true;
+        renderUserReels();
+      }
+    }
+
+    searchInput.addEventListener("input", (e) => {
+      const query = e.target.value.trim().toLowerCase();
+
+      if (!query) {
+        renderPopularReels();
+        return;
+      }
+
+      const shortcode = extractShortcodeClient(query);
+      if (shortcode) {
+        popularGrid.innerHTML = "";
+        const card = createReelCard(shortcode, reels.includes(shortcode));
+        popularGrid.appendChild(card);
+      } else {
+        popularGrid.innerHTML = \`<div class="empty-section">Invalid reel URL or shortcode</div>\`;
+      }
+    });
+
+    playBtn.addEventListener("click", () => {
+      vscodeApi.postMessage({
+        type: "switchMode",
+        mode: "player"
+      });
+    });
+
+    function extractShortcodeClient(input) {
+      if (/^[A-Za-z0-9_-]{6,}$/.test(input)) {
+        return input;
+      }
+
+      const patterns = [
+        /instagram\\.com\\/reel\\/([A-Za-z0-9_-]+)/,
+        /instagram\\.com\\/reels\\/([A-Za-z0-9_-]+)/,
+        /instagram\\.com\\/p\\/([A-Za-z0-9_-]+)/
+      ];
+
+      for (const pattern of patterns) {
+        const match = input.match(pattern);
+        if (match && match[1]) {
+          return match[1];
+        }
+      }
+
+      return null;
+    }
+
+    renderPopularReels();
+    renderUserReels();
+  </script>
+</body>
+</html>`;
 }
 
 function getReelsWebviewHtml(reels: string[]): string {
@@ -491,6 +887,7 @@ function getReelsWebviewHtml(reels: string[]): string {
         <span class="counter" id="counter"></span>
       </div>
       <div class="toolbar-right">
+        <button class="btn" id="btnBrowse" title="Browse more reels">Browse</button>
         <button class="btn" id="btnAdd" title="Add a reel URL">+ Add</button>
         <button class="btn" id="btnRefresh" title="Refresh current reel">Refresh</button>
       </div>
@@ -511,6 +908,10 @@ function getReelsWebviewHtml(reels: string[]): string {
     const counter = document.getElementById("counter");
 
     // --- Buttons ---
+    document.getElementById("btnBrowse").addEventListener("click", () => {
+      vscodeApi.postMessage({ type: "switchMode", mode: "library" });
+    });
+
     document.getElementById("btnAdd").addEventListener("click", () => {
       vscodeApi.postMessage({ type: "addReelRequest" });
     });
