@@ -2,7 +2,7 @@
   "name": "instagram-sidecar-vscode",
   "displayName": "Instagram Reels Sidecar",
   "description": "Browse Instagram Reels in a VS Code sidebar panel while coding. Quick in-VSCode login, navigate with arrow keys and mouse wheel, scroll Instagram feeds without leaving your editor.",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "publisher": "bhabinexpert",
   "author": "bhabinexpert",
   "license": "MIT",

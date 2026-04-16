@@ -2,6 +2,11 @@
 
 All notable changes to the **Instagram Reels Sidecar** extension will be documented in this file.
 
+## [0.0.6] - 2026-04-16
+
+### Changed
+- Prepared the release metadata for the next Marketplace update.
+
 ## [0.0.5] - 2026-04-13
 
 ### Changed
