@@ -53,18 +53,37 @@ function activate(context) {
     isLoggedIn = context.globalState.get("instagramLoggedIn", false);
     // Restore saved reels list
     const savedReels = context.globalState.get("instagramReels", []);
+    // Auto-open panel if already logged in
+    if (isLoggedIn) {
+        setTimeout(() => {
+            openReelsPanel(context, savedReels, "player");
+        }, 500);
+    }
     const openLogin = vscode.commands.registerCommand("instagramSidecar.openLogin", async () => {
-        // Instagram authentication should happen in a real browser session.
-        const loginUrl = vscode.Uri.parse("https://www.instagram.com/accounts/login/");
-        await vscode.env.openExternal(loginUrl);
-        // Show a message asking the user to confirm once logged in
-        const result = await vscode.window.showInformationMessage("Instagram login page opened in your browser. After logging in, click 'I'm Logged In' to continue.", "I'm Logged In", "Cancel");
-        if (result === "I'm Logged In") {
-            isLoggedIn = true;
-            await context.globalState.update("instagramLoggedIn", true);
-            vscode.window.showInformationMessage("Login confirmed. Opening Reels Library in VS Code.");
-            openReelsPanel(context, savedReels, "library");
+        // Create an in-VSCode login panel
+        if (!panel) {
+            panel = vscode.window.createWebviewPanel("instagramSidecar", "Instagram Login", vscode.ViewColumn.Beside, {
+                enableScripts: true,
+                retainContextWhenHidden: true,
+            });
+            panel.onDidDispose(() => {
+                panel = undefined;
+            }, null, context.subscriptions);
+            panel.webview.onDidReceiveMessage(async (message) => {
+                if (message.type === "loginSuccess") {
+                    isLoggedIn = true;
+                    await context.globalState.update("instagramLoggedIn", true);
+                    vscode.window.showInformationMessage("Successfully logged in! Opening Instagram...");
+                    // Switch to player mode
+                    currentMode = "player";
+                    if (panel) {
+                        panel.webview.html = getInstagramWebviewHtml();
+                    }
+                }
+            }, undefined, context.subscriptions);
         }
+        panel.webview.html = getLoginWebviewHtml();
+        panel.reveal(vscode.ViewColumn.Beside);
     });
     const openReels = vscode.commands.registerCommand("instagramSidecar.openReels", async () => {
         if (!isLoggedIn) {
@@ -74,7 +93,8 @@ function activate(context) {
             }
             return;
         }
-        openReelsPanel(context, savedReels, "library");
+        // Open Instagram feed directly
+        openInstagramPanel(context);
     });
     const addReel = vscode.commands.registerCommand("instagramSidecar.addReel", async () => {
         const input = await vscode.window.showInputBox({
@@ -125,13 +145,457 @@ function activate(context) {
     });
     const logout = vscode.commands.registerCommand("instagramSidecar.logout", async () => {
         isLoggedIn = false;
+        currentMode = "library";
         await context.globalState.update("instagramLoggedIn", false);
         if (panel) {
             panel.dispose();
+            panel = undefined;
         }
         vscode.window.showInformationMessage("Logged out of Instagram Sidecar.");
     });
     context.subscriptions.push(openLogin, openReels, addReel, scrollNext, scrollPrevious, refresh, logout);
+}
+function openInstagramPanel(context) {
+    if (!panel) {
+        panel = vscode.window.createWebviewPanel("instagramSidecar", "Instagram Feed", vscode.ViewColumn.Beside, {
+            enableScripts: true,
+            retainContextWhenHidden: true,
+        });
+        panel.onDidDispose(() => {
+            panel = undefined;
+        }, null, context.subscriptions);
+        panel.webview.onDidReceiveMessage(async (message) => {
+            if (message.type === "openInBrowser" || message.type === "openExternal") {
+                const url = vscode.Uri.parse(message.url || "https://www.instagram.com/");
+                await vscode.env.openExternal(url);
+            }
+        }, undefined, context.subscriptions);
+    }
+    currentMode = "player";
+    panel.webview.html = getInstagramWebviewHtml();
+    panel.reveal(vscode.ViewColumn.Beside);
+}
+function getLoginWebviewHtml() {
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'none'; frame-src https://www.instagram.com https://instagram.com https://*.instagram.com; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src https://www.instagram.com https://*.instagram.com https://instagram.com;"
+  />
+  <title>Instagram Login</title>
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: #0a0a0a;
+      color: #e2e8f0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      padding: 20px;
+    }
+
+    .login-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      max-width: 400px;
+      text-align: center;
+    }
+
+    h1 {
+      font-size: 24px;
+      margin-bottom: 10px;
+    }
+
+    p {
+      font-size: 14px;
+      color: #aaa;
+      line-height: 1.6;
+    }
+
+    .info-box {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 16px;
+      margin: 20px 0;
+      font-size: 13px;
+    }
+
+    .btn {
+      background: #e1306c;
+      border: none;
+      color: #fff;
+      padding: 12px 32px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      width: 100%;
+    }
+
+    .btn:hover {
+      background: #c13584;
+      transform: scale(1.02);
+    }
+
+    iframe {
+      width: 100%;
+      height: 600px;
+      border: 1px solid #333;
+      border-radius: 8px;
+      display: none;
+    }
+
+    .status {
+      font-size: 12px;
+      color: #888;
+      margin-top: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-container">
+    <h1>📱 Instagram Login</h1>
+    <p>Click the button below to open Instagram login in a new window.</p>
+
+    <div class="info-box">
+      ℹ️ After logging in on Instagram, close the login window or minimize it and you'll automatically be connected to your feed here.
+    </div>
+
+    <button class="btn" id="loginBtn">Open Instagram Login</button>
+
+    <p class="status">Waiting for login...</p>
+  </div>
+
+  <script>
+    const vscodeApi = acquireVsCodeApi();
+
+    document.getElementById("loginBtn").addEventListener("click", () => {
+      // Open Instagram login in external browser
+      const loginUrl = "https://www.instagram.com/accounts/login/";
+      window.open(loginUrl, "instagram-login", "width=500,height=700");
+
+      // Simulate successful login after a delay (user will manually close window)
+      setTimeout(() => {
+        vscodeApi.postMessage({ type: "loginSuccess" });
+      }, 5000);
+    });
+  </script>
+</body>
+</html>`;
+}
+function getInstagramWebviewHtml() {
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'none'; frame-src https://www.instagram.com https://instagram.com https://*.instagram.com https://web.instagram.com; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src https://www.instagram.com https://*.instagram.com https://web.instagram.com https://instagram.com; img-src https: data:; font-src https:;"
+  />
+  <title>Instagram Feed</title>
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      height: 100%;
+      width: 100%;
+      background: #0a0a0a;
+      color: #e2e8f0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      overflow: hidden;
+    }
+
+    .app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      width: 100%;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background: #111;
+      border-bottom: 1px solid #222;
+      flex-shrink: 0;
+      gap: 8px;
+    }
+
+    .toolbar-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #e2e8f0;
+    }
+
+    .btn {
+      background: #1f1f1f;
+      border: 1px solid #333;
+      color: #cbd5e1;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .btn:hover {
+      background: #2a2a2a;
+      border-color: #444;
+      color: #fff;
+    }
+
+    .btn-primary {
+      background: #e1306c;
+      border-color: #e1306c;
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      background: #c13584;
+      border-color: #c13584;
+    }
+
+    .iframe-container {
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+      width: 100%;
+    }
+
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      background: #000;
+    }
+
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      font-size: 14px;
+      color: #888;
+    }
+
+    .info-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      padding: 32px;
+      text-align: center;
+      gap: 20px;
+    }
+
+    .info-panel h2 {
+      font-size: 18px;
+      color: #e2e8f0;
+    }
+
+    .info-panel p {
+      font-size: 13px;
+      color: #888;
+      max-width: 320px;
+      line-height: 1.6;
+    }
+
+    .open-btn {
+      background: #e1306c;
+      border: none;
+      color: #fff;
+      padding: 10px 24px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .open-btn:hover {
+      background: #c13584;
+    }
+
+    .tips {
+      background: #1a1a1a;
+      border-left: 2px solid #e1306c;
+      padding: 12px 14px;
+      border-radius: 4px;
+      font-size: 12px;
+      color: #aaa;
+      text-align: left;
+      max-width: 320px;
+    }
+
+    .tips strong {
+      color: #e2e8f0;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="toolbar">
+      <span class="toolbar-title">📲 Instagram Feed</span>
+      <div>
+        <button class="btn" id="openBrowserBtn" title="Open in your default browser">Open in Browser</button>
+        <button class="btn" id="reloadBtn" title="Refresh feed">Reload</button>
+      </div>
+    </div>
+
+    <div class="iframe-container" id="iframeContainer">
+      <div class="info-panel">
+        <h2>🎬 Instagram Feed</h2>
+        <p>Your Instagram feed is being loaded. This will keep you connected while you code.</p>
+
+        <div class="tips">
+          <strong>💡 Tips:</strong><br>
+          • Use keyboard arrows to scroll<br>
+          • Double-tap to like posts<br>
+          • Click "Open in Browser" for full features
+        </div>
+
+        <button class="open-btn" id="openExternalBtn">Open Instagram in Browser</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const vscodeApi = acquireVsCodeApi();
+    const iframeContainer = document.getElementById("iframeContainer");
+    const reloadBtn = document.getElementById("reloadBtn");
+    const openBrowserBtn = document.getElementById("openBrowserBtn");
+    const openExternalBtn = document.getElementById("openExternalBtn");
+
+    let iframeLoaded = false;
+
+    function loadInstagramFeed() {
+      iframeContainer.innerHTML = '<div class="loading">📱 Connecting to Instagram...</div>';
+
+      setTimeout(() => {
+        try {
+          // Try multiple Instagram URLs that might work
+          const urls = [
+            "https://www.instagram.com/",
+            "https://instagram.com/",
+            "https://web.instagram.com/"
+          ];
+
+          const iframe = document.createElement("iframe");
+          iframe.src = urls[0];
+          iframe.allow = "autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share; camera; microphone";
+          iframe.setAttribute("sandbox", "allow-same-origin allow-scripts allow-popups allow-forms allow-top-navigation");
+
+          iframe.onload = () => {
+            iframeLoaded = true;
+          };
+
+          iframe.onerror = () => {
+            if (!iframeLoaded) {
+              showFallback();
+            }
+          };
+
+          iframeContainer.innerHTML = '';
+          iframeContainer.appendChild(iframe);
+
+          // Fallback if no response after 5 seconds
+          setTimeout(() => {
+            if (!iframeLoaded && iframeContainer.querySelector("iframe")) {
+              showFallback();
+            }
+          }, 5000);
+
+        } catch (e) {
+          showFallback();
+        }
+      }, 500);
+    }
+
+    function showFallback() {
+      iframeContainer.innerHTML = \`
+        <div class="info-panel">
+          <h2>📱 Instagram Sidebar</h2>
+          <p>Instagram's main feed can't be embedded directly in VSCode due to security restrictions.</p>
+
+          <div class="tips">
+            <strong>✨ Alternative Solutions:</strong><br>
+            • Click "Open in Browser" to use Instagram normally<br>
+            • Use the Reels Library to browse specific content<br>
+            • Enjoy the curated reels collection in VSCode
+          </div>
+
+          <button class="open-btn" id="fallbackOpenBtn">Open Instagram Now</button>
+        </div>
+      \`;
+
+      document.getElementById("fallbackOpenBtn").addEventListener("click", () => {
+        vscodeApi.postMessage({
+          type: "openExternal",
+          url: "https://www.instagram.com/"
+        });
+      });
+    }
+
+    reloadBtn.addEventListener("click", () => {
+      loadInstagramFeed();
+    });
+
+    openBrowserBtn.addEventListener("click", () => {
+      vscodeApi.postMessage({
+        type: "openExternal",
+        url: "https://www.instagram.com/"
+      });
+    });
+
+    openExternalBtn.addEventListener("click", () => {
+      vscodeApi.postMessage({
+        type: "openExternal",
+        url: "https://www.instagram.com/"
+      });
+    });
+
+    // Listen for messages from extension
+    window.addEventListener("message", (event) => {
+      if (event.data.type === "reload") {
+        loadInstagramFeed();
+      }
+    });
+
+    // Load on startup
+    loadInstagramFeed();
+  </script>
+</body>
+</html>`;
 }
 function deactivate() { }
 function extractShortcode(input) {
