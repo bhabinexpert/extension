@@ -5,7 +5,6 @@ let isLoggedIn = false;
 let currentMode: "library" | "player" = "library";
 
 // Popular/trending Instagram reel shortcodes for browsing
-const DEFAULT_REELS: string[] = [];
 const POPULAR_REELS: string[] = [
   "C_r5IhRr9QZ",
   "C_rxn7LR0T3",
@@ -15,54 +14,42 @@ const POPULAR_REELS: string[] = [
 ];
 
 export function activate(context: vscode.ExtensionContext) {
-  // Restore login state from global state
+  const savedReels = context.globalState.get<string[]>("instagramReels", []);
   isLoggedIn = context.globalState.get<boolean>("instagramLoggedIn", false);
 
-  // Restore saved reels list
-  const savedReels = context.globalState.get<string[]>("instagramReels", []);
-
-  // Auto-open panel if already logged in
-  if (isLoggedIn) {
-    setTimeout(() => {
-      openReelsPanel(context, savedReels, "player");
-    }, 500);
-  }
+  // Auto-open reel panel on activation
+  setTimeout(() => {
+    const mode = savedReels.length > 0 ? "player" : "library";
+    openReelsPanel(context, savedReels, mode);
+  }, 500);
 
   const openLogin = vscode.commands.registerCommand(
     "instagramSidecar.openLogin",
     async () => {
-      // Create an in-VSCode login panel
       if (!panel) {
         panel = vscode.window.createWebviewPanel(
           "instagramSidecar",
           "Instagram Login",
           vscode.ViewColumn.Beside,
-          {
-            enableScripts: true,
-            retainContextWhenHidden: true,
-          }
+          { enableScripts: true, retainContextWhenHidden: true }
         );
 
-        panel.onDidDispose(
-          () => {
-            panel = undefined;
-          },
-          null,
-          context.subscriptions
-        );
+        panel.onDidDispose(() => { panel = undefined; }, null, context.subscriptions);
 
         panel.webview.onDidReceiveMessage(
           async (message) => {
-            if (message.type === "loginSuccess") {
+            if (message.type === "openExternal") {
+              await vscode.env.openExternal(vscode.Uri.parse(message.url));
+            } else if (message.type === "loginSuccess") {
               isLoggedIn = true;
               await context.globalState.update("instagramLoggedIn", true);
               vscode.window.showInformationMessage(
                 "Successfully logged in! Opening Instagram..."
               );
-              // Switch to player mode
               currentMode = "player";
+              const savedReels = context.globalState.get<string[]>("instagramReels", []);
               if (panel) {
-                panel.webview.html = getInstagramWebviewHtml();
+                panel.webview.html = getReelsWebviewHtml(savedReels);
               }
             }
           },
@@ -79,21 +66,15 @@ export function activate(context: vscode.ExtensionContext) {
   const openReels = vscode.commands.registerCommand(
     "instagramSidecar.openReels",
     async () => {
-      if (!isLoggedIn) {
-        const result = await vscode.window.showInformationMessage(
-          "Login is required first. Open Instagram login now?",
-          "Login",
-          "Cancel"
-        );
+      const savedReels = context.globalState.get<string[]>("instagramReels", []);
 
-        if (result === "Login") {
-          await vscode.commands.executeCommand("instagramSidecar.openLogin");
-        }
-        return;
+      if (savedReels.length === 0) {
+        // Open library if no reels saved
+        openReelsPanel(context, savedReels, "library");
+      } else {
+        // Open player if reels exist
+        openReelsPanel(context, savedReels, "player");
       }
-
-      // Open Instagram feed directly
-      openInstagramPanel(context);
     }
   );
 
@@ -103,17 +84,9 @@ export function activate(context: vscode.ExtensionContext) {
       const input = await vscode.window.showInputBox({
         prompt: "Enter an Instagram Reel URL or shortcode",
         placeHolder: "https://www.instagram.com/reel/ABC123/ or just ABC123",
-        validateInput: (value) => {
-          if (!value.trim()) {
-            return "Please enter a reel URL or shortcode";
-          }
-          return null;
-        },
       });
 
-      if (!input) {
-        return;
-      }
+      if (!input?.trim()) return;
 
       const shortcode = extractShortcode(input.trim());
       if (!shortcode) {
@@ -123,14 +96,13 @@ export function activate(context: vscode.ExtensionContext) {
         return;
       }
 
-      savedReels.push(shortcode);
-      await context.globalState.update("instagramReels", savedReels);
+      if (!savedReels.includes(shortcode)) {
+        savedReels.push(shortcode);
+        await context.globalState.update("instagramReels", savedReels);
+      }
 
       if (panel) {
-        panel.webview.postMessage({
-          type: "addReel",
-          shortcode,
-        });
+        panel.webview.postMessage({ type: "addReel", shortcode });
       }
 
       vscode.window.showInformationMessage(`Reel added! (${shortcode})`);
@@ -139,30 +111,24 @@ export function activate(context: vscode.ExtensionContext) {
 
   const scrollNext = vscode.commands.registerCommand(
     "instagramSidecar.scrollNext",
-    async () => {
-      panel?.webview.postMessage({ type: "scroll", direction: "next" });
-    }
+    () => panel?.webview.postMessage({ type: "scroll", direction: "next" })
   );
 
   const scrollPrevious = vscode.commands.registerCommand(
     "instagramSidecar.scrollPrevious",
-    async () => {
-      panel?.webview.postMessage({ type: "scroll", direction: "previous" });
-    }
+    () => panel?.webview.postMessage({ type: "scroll", direction: "previous" })
   );
 
   const refresh = vscode.commands.registerCommand(
     "instagramSidecar.refresh",
-    async () => {
+    () => {
       if (panel) {
-        if (currentMode === "library") {
-          panel.webview.html = getLibraryWebviewHtml(savedReels);
-        } else {
-          panel.webview.html = getReelsWebviewHtml(savedReels);
-        }
-        return;
+        panel.webview.html = currentMode === "library"
+          ? getLibraryWebviewHtml(savedReels)
+          : getReelsWebviewHtml(savedReels);
+      } else {
+        openReelsPanel(context, savedReels, currentMode);
       }
-      openReelsPanel(context, savedReels, currentMode);
     }
   );
 
@@ -172,10 +138,7 @@ export function activate(context: vscode.ExtensionContext) {
       isLoggedIn = false;
       currentMode = "library";
       await context.globalState.update("instagramLoggedIn", false);
-      if (panel) {
-        panel.dispose();
-        panel = undefined;
-      }
+      panel?.dispose();
       vscode.window.showInformationMessage("Logged out of Instagram Sidecar.");
     }
   );
@@ -191,42 +154,6 @@ export function activate(context: vscode.ExtensionContext) {
   );
 }
 
-function openInstagramPanel(context: vscode.ExtensionContext) {
-  if (!panel) {
-    panel = vscode.window.createWebviewPanel(
-      "instagramSidecar",
-      "Instagram Feed",
-      vscode.ViewColumn.Beside,
-      {
-        enableScripts: true,
-        retainContextWhenHidden: true,
-      }
-    );
-
-    panel.onDidDispose(
-      () => {
-        panel = undefined;
-      },
-      null,
-      context.subscriptions
-    );
-
-    panel.webview.onDidReceiveMessage(
-      async (message) => {
-        if (message.type === "openInBrowser" || message.type === "openExternal") {
-          const url = vscode.Uri.parse(message.url || "https://www.instagram.com/");
-          await vscode.env.openExternal(url);
-        }
-      },
-      undefined,
-      context.subscriptions
-    );
-  }
-
-  currentMode = "player";
-  panel.webview.html = getInstagramWebviewHtml();
-  panel.reveal(vscode.ViewColumn.Beside);
-}
 
 function getLoginWebviewHtml(): string {
   return `<!DOCTYPE html>
@@ -341,9 +268,9 @@ function getLoginWebviewHtml(): string {
     const vscodeApi = acquireVsCodeApi();
 
     document.getElementById("loginBtn").addEventListener("click", () => {
-      // Open Instagram login in external browser
+      // Open Instagram login in external browser via VS Code API
       const loginUrl = "https://www.instagram.com/accounts/login/";
-      window.open(loginUrl, "instagram-login", "width=500,height=700");
+      vscodeApi.postMessage({ type: "openExternal", url: loginUrl });
 
       // Simulate successful login after a delay (user will manually close window)
       setTimeout(() => {
@@ -355,302 +282,6 @@ function getLoginWebviewHtml(): string {
 </html>`;
 }
 
-function getInstagramWebviewHtml(): string {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta
-    http-equiv="Content-Security-Policy"
-    content="default-src 'none'; frame-src https://www.instagram.com https://instagram.com https://*.instagram.com https://web.instagram.com; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src https://www.instagram.com https://*.instagram.com https://web.instagram.com https://instagram.com; img-src https: data:; font-src https:;"
-  />
-  <title>Instagram Feed</title>
-  <style>
-    :root {
-      color-scheme: dark;
-    }
-
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    html, body {
-      height: 100%;
-      width: 100%;
-      background: #0a0a0a;
-      color: #e2e8f0;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      overflow: hidden;
-    }
-
-    .app {
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
-      width: 100%;
-    }
-
-    .toolbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 8px 12px;
-      background: #111;
-      border-bottom: 1px solid #222;
-      flex-shrink: 0;
-      gap: 8px;
-    }
-
-    .toolbar-title {
-      font-size: 13px;
-      font-weight: 600;
-      color: #e2e8f0;
-    }
-
-    .btn {
-      background: #1f1f1f;
-      border: 1px solid #333;
-      color: #cbd5e1;
-      border-radius: 6px;
-      padding: 4px 10px;
-      font-size: 12px;
-      cursor: pointer;
-      transition: all 0.15s;
-    }
-
-    .btn:hover {
-      background: #2a2a2a;
-      border-color: #444;
-      color: #fff;
-    }
-
-    .btn-primary {
-      background: #e1306c;
-      border-color: #e1306c;
-      color: #fff;
-    }
-
-    .btn-primary:hover {
-      background: #c13584;
-      border-color: #c13584;
-    }
-
-    .iframe-container {
-      flex: 1;
-      overflow: hidden;
-      position: relative;
-      width: 100%;
-    }
-
-    iframe {
-      width: 100%;
-      height: 100%;
-      border: none;
-      background: #000;
-    }
-
-    .loading {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 100%;
-      font-size: 14px;
-      color: #888;
-    }
-
-    .info-panel {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100%;
-      padding: 32px;
-      text-align: center;
-      gap: 20px;
-    }
-
-    .info-panel h2 {
-      font-size: 18px;
-      color: #e2e8f0;
-    }
-
-    .info-panel p {
-      font-size: 13px;
-      color: #888;
-      max-width: 320px;
-      line-height: 1.6;
-    }
-
-    .open-btn {
-      background: #e1306c;
-      border: none;
-      color: #fff;
-      padding: 10px 24px;
-      border-radius: 6px;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.15s;
-    }
-
-    .open-btn:hover {
-      background: #c13584;
-    }
-
-    .tips {
-      background: #1a1a1a;
-      border-left: 2px solid #e1306c;
-      padding: 12px 14px;
-      border-radius: 4px;
-      font-size: 12px;
-      color: #aaa;
-      text-align: left;
-      max-width: 320px;
-    }
-
-    .tips strong {
-      color: #e2e8f0;
-    }
-  </style>
-</head>
-<body>
-  <div class="app">
-    <div class="toolbar">
-      <span class="toolbar-title">📲 Instagram Feed</span>
-      <div>
-        <button class="btn" id="openBrowserBtn" title="Open in your default browser">Open in Browser</button>
-        <button class="btn" id="reloadBtn" title="Refresh feed">Reload</button>
-      </div>
-    </div>
-
-    <div class="iframe-container" id="iframeContainer">
-      <div class="info-panel">
-        <h2>🎬 Instagram Feed</h2>
-        <p>Your Instagram feed is being loaded. This will keep you connected while you code.</p>
-
-        <div class="tips">
-          <strong>💡 Tips:</strong><br>
-          • Use keyboard arrows to scroll<br>
-          • Double-tap to like posts<br>
-          • Click "Open in Browser" for full features
-        </div>
-
-        <button class="open-btn" id="openExternalBtn">Open Instagram in Browser</button>
-      </div>
-    </div>
-  </div>
-
-  <script>
-    const vscodeApi = acquireVsCodeApi();
-    const iframeContainer = document.getElementById("iframeContainer");
-    const reloadBtn = document.getElementById("reloadBtn");
-    const openBrowserBtn = document.getElementById("openBrowserBtn");
-    const openExternalBtn = document.getElementById("openExternalBtn");
-
-    let iframeLoaded = false;
-
-    function loadInstagramFeed() {
-      iframeContainer.innerHTML = '<div class="loading">📱 Connecting to Instagram...</div>';
-
-      setTimeout(() => {
-        try {
-          // Try multiple Instagram URLs that might work
-          const urls = [
-            "https://www.instagram.com/",
-            "https://instagram.com/",
-            "https://web.instagram.com/"
-          ];
-
-          const iframe = document.createElement("iframe");
-          iframe.src = urls[0];
-          iframe.allow = "autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share; camera; microphone";
-          iframe.setAttribute("sandbox", "allow-same-origin allow-scripts allow-popups allow-forms allow-top-navigation");
-
-          iframe.onload = () => {
-            iframeLoaded = true;
-          };
-
-          iframe.onerror = () => {
-            if (!iframeLoaded) {
-              showFallback();
-            }
-          };
-
-          iframeContainer.innerHTML = '';
-          iframeContainer.appendChild(iframe);
-
-          // Fallback if no response after 5 seconds
-          setTimeout(() => {
-            if (!iframeLoaded && iframeContainer.querySelector("iframe")) {
-              showFallback();
-            }
-          }, 5000);
-
-        } catch (e) {
-          showFallback();
-        }
-      }, 500);
-    }
-
-    function showFallback() {
-      iframeContainer.innerHTML = \`
-        <div class="info-panel">
-          <h2>📱 Instagram Sidebar</h2>
-          <p>Instagram's main feed can't be embedded directly in VSCode due to security restrictions.</p>
-
-          <div class="tips">
-            <strong>✨ Alternative Solutions:</strong><br>
-            • Click "Open in Browser" to use Instagram normally<br>
-            • Use the Reels Library to browse specific content<br>
-            • Enjoy the curated reels collection in VSCode
-          </div>
-
-          <button class="open-btn" id="fallbackOpenBtn">Open Instagram Now</button>
-        </div>
-      \`;
-
-      document.getElementById("fallbackOpenBtn").addEventListener("click", () => {
-        vscodeApi.postMessage({
-          type: "openExternal",
-          url: "https://www.instagram.com/"
-        });
-      });
-    }
-
-    reloadBtn.addEventListener("click", () => {
-      loadInstagramFeed();
-    });
-
-    openBrowserBtn.addEventListener("click", () => {
-      vscodeApi.postMessage({
-        type: "openExternal",
-        url: "https://www.instagram.com/"
-      });
-    });
-
-    openExternalBtn.addEventListener("click", () => {
-      vscodeApi.postMessage({
-        type: "openExternal",
-        url: "https://www.instagram.com/"
-      });
-    });
-
-    // Listen for messages from extension
-    window.addEventListener("message", (event) => {
-      if (event.data.type === "reload") {
-        loadInstagramFeed();
-      }
-    });
-
-    // Load on startup
-    loadInstagramFeed();
-  </script>
-</body>
-</html>`;
-}
 
 export function deactivate() {}
 
@@ -680,6 +311,63 @@ function extractShortcode(input: string): string | null {
   return null;
 }
 
+function handlePanelMessage(
+  context: vscode.ExtensionContext,
+  message: any,
+  reels: string[]
+) {
+  switch (message.type) {
+    case "openInBrowser":
+      vscode.env.openExternal(vscode.Uri.parse(message.url));
+      break;
+
+    case "addReelRequest":
+      vscode.commands.executeCommand("instagramSidecar.addReel");
+      break;
+
+    case "addReelFromInput":
+      const shortcode = typeof message.shortcode === "string"
+        ? extractShortcode(message.shortcode.trim())
+        : null;
+
+      if (!shortcode) {
+        vscode.window.showErrorMessage(
+          "Invalid reel URL or shortcode. Please paste a valid Instagram reel URL."
+        );
+        return;
+      }
+
+      if (!reels.includes(shortcode)) {
+        reels.push(shortcode);
+        context.globalState.update("instagramReels", reels);
+      }
+
+      panel?.webview.postMessage({ type: "focusReel", shortcode });
+      break;
+
+    case "login":
+      vscode.commands.executeCommand("instagramSidecar.openLogin");
+      break;
+
+    case "switchMode":
+      currentMode = message.mode;
+      if (panel) {
+        panel.webview.html = currentMode === "library"
+          ? getLibraryWebviewHtml(reels)
+          : getReelsWebviewHtml(reels);
+      }
+      break;
+
+    case "addFromLibrary":
+      if (message.shortcode && !reels.includes(message.shortcode)) {
+        reels.push(message.shortcode);
+        context.globalState.update("instagramReels", reels);
+        vscode.window.showInformationMessage(`Reel added! (${message.shortcode})`);
+      }
+      break;
+  }
+}
+
 function openReelsPanel(
   context: vscode.ExtensionContext,
   reels: string[],
@@ -696,74 +384,19 @@ function openReelsPanel(
       }
     );
 
-    panel.onDidDispose(
-      () => {
-        panel = undefined;
-      },
-      null,
-      context.subscriptions
-    );
+    panel.onDidDispose(() => { panel = undefined; }, null, context.subscriptions);
 
     panel.webview.onDidReceiveMessage(
-      async (message) => {
-        if (message.type === "openInBrowser") {
-          const url = vscode.Uri.parse(message.url);
-          await vscode.env.openExternal(url);
-        } else if (message.type === "addReelRequest") {
-          await vscode.commands.executeCommand("instagramSidecar.addReel");
-        } else if (message.type === "addReelFromInput") {
-          const shortcode =
-            typeof message.shortcode === "string"
-              ? extractShortcode(message.shortcode.trim())
-              : null;
-
-          if (!shortcode) {
-            vscode.window.showErrorMessage(
-              "Invalid reel URL or shortcode. Please paste a valid Instagram reel URL."
-            );
-            return;
-          }
-
-          if (!reels.includes(shortcode)) {
-            reels.push(shortcode);
-            await context.globalState.update("instagramReels", reels);
-          }
-
-          panel?.webview.postMessage({
-            type: "focusReel",
-            shortcode,
-          });
-        } else if (message.type === "login") {
-          await vscode.commands.executeCommand("instagramSidecar.openLogin");
-        } else if (message.type === "switchMode") {
-          currentMode = message.mode;
-          if (panel) {
-            if (currentMode === "library") {
-              panel.webview.html = getLibraryWebviewHtml(reels);
-            } else {
-              panel.webview.html = getReelsWebviewHtml(reels);
-            }
-          }
-        } else if (message.type === "addFromLibrary") {
-          const shortcode = message.shortcode;
-          if (shortcode && !reels.includes(shortcode)) {
-            reels.push(shortcode);
-            await context.globalState.update("instagramReels", reels);
-            vscode.window.showInformationMessage(`Reel added! (${shortcode})`);
-          }
-        }
-      },
+      (msg) => handlePanelMessage(context, msg, reels),
       undefined,
       context.subscriptions
     );
   }
 
   currentMode = mode;
-  if (currentMode === "library") {
-    panel.webview.html = getLibraryWebviewHtml(reels);
-  } else {
-    panel.webview.html = getReelsWebviewHtml(reels);
-  }
+  panel.webview.html = mode === "library"
+    ? getLibraryWebviewHtml(reels)
+    : getReelsWebviewHtml(reels);
   panel.reveal(vscode.ViewColumn.Beside);
 }
 
