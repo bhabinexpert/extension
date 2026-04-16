@@ -13,12 +13,19 @@ const POPULAR_REELS: string[] = [
   "C_sKp8RqY1L"
 ];
 
-export function activate(context: vscode.ExtensionContext) {
-  const savedReels = context.globalState.get<string[]>("instagramReels", []);
-  isLoggedIn = context.globalState.get<boolean>("instagramLoggedIn", false);
+function sanitizeShortcodes(values: string[]): string[] {
+  return values.filter((value) => /^[A-Za-z0-9_-]{6,}$/.test(value));
+}
 
+export function activate(context: vscode.ExtensionContext) {
+  console.log("[Instagram Sidecar] Extension activating...");
+  
   // Auto-open reel panel on activation
   setTimeout(() => {
+    const savedReels = sanitizeShortcodes(context.globalState.get<string[]>("instagramReels", []));
+    isLoggedIn = context.globalState.get<boolean>("instagramLoggedIn", false);
+    context.globalState.update("instagramReels", savedReels);
+    console.log("[Instagram Sidecar] Auto-opening panel. Saved reels:", savedReels, "Logged in:", isLoggedIn);
     const mode = savedReels.length > 0 ? "player" : "library";
     openReelsPanel(context, savedReels, mode);
   }, 500);
@@ -66,7 +73,8 @@ export function activate(context: vscode.ExtensionContext) {
   const openReels = vscode.commands.registerCommand(
     "instagramSidecar.openReels",
     async () => {
-      const savedReels = context.globalState.get<string[]>("instagramReels", []);
+      const savedReels = sanitizeShortcodes(context.globalState.get<string[]>("instagramReels", []));
+      await context.globalState.update("instagramReels", savedReels);
 
       if (savedReels.length === 0) {
         // Open library if no reels saved
@@ -96,9 +104,10 @@ export function activate(context: vscode.ExtensionContext) {
         return;
       }
 
+      const savedReels = context.globalState.get<string[]>("instagramReels", []);
       if (!savedReels.includes(shortcode)) {
         savedReels.push(shortcode);
-        await context.globalState.update("instagramReels", savedReels);
+        await context.globalState.update("instagramReels", sanitizeShortcodes(savedReels));
       }
 
       if (panel) {
@@ -123,11 +132,14 @@ export function activate(context: vscode.ExtensionContext) {
     "instagramSidecar.refresh",
     () => {
       if (panel) {
+        const savedReels = sanitizeShortcodes(context.globalState.get<string[]>("instagramReels", []));
         panel.webview.html = currentMode === "library"
           ? getLibraryWebviewHtml(savedReels)
           : getReelsWebviewHtml(savedReels);
       } else {
-        openReelsPanel(context, savedReels, currentMode);
+        const savedReels = sanitizeShortcodes(context.globalState.get<string[]>("instagramReels", []));
+        const mode = savedReels.length > 0 ? "player" : "library";
+        openReelsPanel(context, savedReels, mode);
       }
     }
   );
@@ -313,8 +325,7 @@ function extractShortcode(input: string): string | null {
 
 function handlePanelMessage(
   context: vscode.ExtensionContext,
-  message: any,
-  reels: string[]
+  message: any
 ) {
   switch (message.type) {
     case "openInBrowser":
@@ -337,6 +348,7 @@ function handlePanelMessage(
         return;
       }
 
+      const reels = sanitizeShortcodes(context.globalState.get<string[]>("instagramReels", []));
       if (!reels.includes(shortcode)) {
         reels.push(shortcode);
         context.globalState.update("instagramReels", reels);
@@ -352,20 +364,80 @@ function handlePanelMessage(
     case "switchMode":
       currentMode = message.mode;
       if (panel) {
+        const freshReels = sanitizeShortcodes(context.globalState.get<string[]>("instagramReels", []));
         panel.webview.html = currentMode === "library"
-          ? getLibraryWebviewHtml(reels)
-          : getReelsWebviewHtml(reels);
+          ? getLibraryWebviewHtml(freshReels)
+          : getReelsWebviewHtml(freshReels);
       }
       break;
 
     case "addFromLibrary":
-      if (message.shortcode && !reels.includes(message.shortcode)) {
-        reels.push(message.shortcode);
-        context.globalState.update("instagramReels", reels);
+      const libraryReels = sanitizeShortcodes(context.globalState.get<string[]>("instagramReels", []));
+      if (message.shortcode && !libraryReels.includes(message.shortcode)) {
+        libraryReels.push(message.shortcode);
+        context.globalState.update("instagramReels", libraryReels);
         vscode.window.showInformationMessage(`Reel added! (${message.shortcode})`);
       }
       break;
   }
+}
+
+function getErrorWebviewHtml(message: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instagram Reels</title>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: #0a0a0a;
+      color: #e2e8f0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    .wrap {
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      text-align: center;
+    }
+
+    .card {
+      max-width: 420px;
+      border: 1px solid #333;
+      border-radius: 12px;
+      padding: 20px;
+      background: #111;
+    }
+
+    h2 {
+      margin: 0 0 8px 0;
+      font-size: 18px;
+    }
+
+    p {
+      margin: 0;
+      font-size: 13px;
+      color: #aaa;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h2>Instagram Reels Panel</h2>
+      <p>${message}</p>
+    </div>
+  </div>
+</body>
+</html>`;
 }
 
 function openReelsPanel(
@@ -373,7 +445,10 @@ function openReelsPanel(
   reels: string[],
   mode: "library" | "player" = "player"
 ) {
+  console.log(`[Instagram Sidecar] openReelsPanel called with mode: ${mode}, reels:`, reels);
+  
   if (!panel) {
+    console.log("[Instagram Sidecar] Creating new webview panel...");
     panel = vscode.window.createWebviewPanel(
       "instagramSidecar",
       "Instagram Reels",
@@ -384,20 +459,37 @@ function openReelsPanel(
       }
     );
 
-    panel.onDidDispose(() => { panel = undefined; }, null, context.subscriptions);
+    panel.onDidDispose(() => { 
+      console.log("[Instagram Sidecar] Panel disposed");
+      panel = undefined; 
+    }, null, context.subscriptions);
 
     panel.webview.onDidReceiveMessage(
-      (msg) => handlePanelMessage(context, msg, reels),
+      (msg) => {
+        console.log("[Instagram Sidecar] Received message from webview:", msg);
+        handlePanelMessage(context, msg);
+      },
       undefined,
       context.subscriptions
     );
   }
 
   currentMode = mode;
-  panel.webview.html = mode === "library"
-    ? getLibraryWebviewHtml(reels)
-    : getReelsWebviewHtml(reels);
+  try {
+    const html = mode === "library"
+      ? getLibraryWebviewHtml(reels)
+      : getReelsWebviewHtml(reels);
+
+    console.log(`[Instagram Sidecar] Setting webview HTML for ${mode} mode. HTML length: ${html.length}`);
+    panel.webview.html = html;
+  } catch (error) {
+    const errorText = error instanceof Error ? error.message : String(error);
+    console.error("[Instagram Sidecar] Failed to render webview HTML:", errorText);
+    panel.webview.html = getErrorWebviewHtml(`Rendering failed: ${errorText}\n\nUse command: Instagram Sidecar: Open Reels`);
+  }
+
   panel.reveal(vscode.ViewColumn.Beside);
+  console.log("[Instagram Sidecar] Panel revealed");
 }
 
 function getLibraryWebviewHtml(reels: string[]): string {
@@ -637,7 +729,7 @@ function getLibraryWebviewHtml(reels: string[]): string {
 
     <div class="content" id="content">
       <div class="section-header">Popular Reels</div>
-      <div class="reel-grid" id="popularGrid"></div>
+      <div class="reel-grid" id="popularGrid">Loading...</div>
 
       <div id="yourReelsSection" style="display: none;">
         <div class="section-header">Your Added Reels</div>
@@ -648,12 +740,25 @@ function getLibraryWebviewHtml(reels: string[]): string {
     <div class="sticky-play">
       <button class="play-btn" id="playBtn" disabled>Play My Reels</button>
     </div>
+
+    <noscript>
+      <div class="empty-section">JavaScript is required to load reels. Run command: Instagram Sidecar: Refresh</div>
+    </noscript>
   </div>
 
   <script>
+    console.log("[Instagram Sidecar Library] Webview loaded");
+    
     const vscodeApi = acquireVsCodeApi();
     let reels = ${reelsJson};
     const popularReels = ${popularReelsJson};
+
+    console.log("[Instagram Sidecar Library] Initialized with reels:", reels, "Popular:", popularReels);
+
+    // Error handler for diagnostics
+    window.addEventListener("error", (event) => {
+      console.error("[Instagram Sidecar Library] Error:", event.error);
+    });
 
     const searchInput = document.getElementById("searchInput");
     const popularGrid = document.getElementById("popularGrid");
@@ -662,6 +767,7 @@ function getLibraryWebviewHtml(reels: string[]): string {
     const playBtn = document.getElementById("playBtn");
 
     function renderPopularReels() {
+      console.log("[Instagram Sidecar Library] Rendering popular reels");
       popularGrid.innerHTML = "";
       popularReels.forEach((shortcode) => {
         const card = createReelCard(shortcode, false);
@@ -742,6 +848,7 @@ function getLibraryWebviewHtml(reels: string[]): string {
     });
 
     playBtn.addEventListener("click", () => {
+      console.log("[Instagram Sidecar Library] User clicked Play My Reels");
       vscodeApi.postMessage({
         type: "switchMode",
         mode: "player"
@@ -769,8 +876,10 @@ function getLibraryWebviewHtml(reels: string[]): string {
       return null;
     }
 
+    console.log("[Instagram Sidecar Library] Initial render starting");
     renderPopularReels();
     renderUserReels();
+    console.log("[Instagram Sidecar Library] Initial render complete");
   </script>
 </body>
 </html>`;
@@ -1053,35 +1162,58 @@ function getReelsWebviewHtml(reels: string[]): string {
     </div>
 
     <div class="reels-container" id="reelsContainer">
-      <!-- Populated by JS -->
+      <div class="empty-state">
+        <div class="empty-state-icon">&#127910;</div>
+        <h2>Loading Reels...</h2>
+        <p>If this stays blank, run command: Instagram Sidecar: Refresh</p>
+      </div>
     </div>
+
+    <noscript>
+      <div class="empty-state">
+        <h2>JavaScript Required</h2>
+        <p>This panel needs JavaScript enabled inside VS Code webview.</p>
+      </div>
+    </noscript>
   </div>
 
   <script>
+    console.log("[Instagram Sidecar Player] Webview loaded");
     const vscodeApi = acquireVsCodeApi();
 
     let reels = ${reelsJson};
     let currentIndex = 0;
+
+    // Error handler for diagnostics
+    window.addEventListener("error", (event) => {
+      console.error("[Instagram Sidecar Player] Error:", event.error);
+    });
+    console.log("[Instagram Sidecar Player] Initialized with reels:", reels);
 
     const reelsContainer = document.getElementById("reelsContainer");
     const counter = document.getElementById("counter");
 
     // --- Buttons ---
     document.getElementById("btnBrowse").addEventListener("click", () => {
+      console.log("[Instagram Sidecar Player] User clicked Browse");
       vscodeApi.postMessage({ type: "switchMode", mode: "library" });
     });
 
     document.getElementById("btnAdd").addEventListener("click", () => {
+      console.log("[Instagram Sidecar Player] User clicked Add Reel");
       vscodeApi.postMessage({ type: "addReelRequest" });
     });
 
     document.getElementById("btnRefresh").addEventListener("click", () => {
+      console.log("[Instagram Sidecar Player] User clicked Refresh");
       renderCurrentReel();
     });
 
     // --- Render ---
     function renderCurrentReel() {
+      console.log("[Instagram Sidecar Player] renderCurrentReel called, reels length:", reels.length, "currentIndex:", currentIndex);
       if (reels.length === 0) {
+        console.log("[Instagram Sidecar Player] No reels, showing empty state");
         renderEmptyState();
         return;
       }
@@ -1092,6 +1224,7 @@ function getReelsWebviewHtml(reels: string[]): string {
 
       const shortcode = reels[currentIndex];
       const embedUrl = "https://www.instagram.com/reel/" + shortcode + "/embed/";
+      console.log("[Instagram Sidecar Player] Rendering reel:", shortcode, "at index:", currentIndex);
 
       reelsContainer.innerHTML = \`
         <div class="reel-viewport">
@@ -1117,14 +1250,21 @@ function getReelsWebviewHtml(reels: string[]): string {
       const navDown = document.getElementById("navDown");
 
       if (navUp) {
-        navUp.addEventListener("click", () => navigatePrevious());
+        navUp.addEventListener("click", () => {
+          console.log("[Instagram Sidecar Player] navUp clicked");
+          navigatePrevious();
+        });
       }
       if (navDown) {
-        navDown.addEventListener("click", () => navigateNext());
+        navDown.addEventListener("click", () => {
+          console.log("[Instagram Sidecar Player] navDown clicked");
+          navigateNext();
+        });
       }
     }
 
     function renderEmptyState() {
+      console.log("[Instagram Sidecar Player] Rendering empty state");
       counter.textContent = "";
       reelsContainer.innerHTML = \`
         <div class="empty-state">
@@ -1138,13 +1278,22 @@ function getReelsWebviewHtml(reels: string[]): string {
         </div>
       \`;
 
-      document.getElementById("emptyBrowseBtn").addEventListener("click", () => {
-        vscodeApi.postMessage({ type: "switchMode", mode: "library" });
-      });
-
-      document.getElementById("emptyLoginBtn").addEventListener("click", () => {
-        vscodeApi.postMessage({ type: "login" });
-      });
+      const emptyBrowseBtn = document.getElementById("emptyBrowseBtn");
+      const emptyLoginBtn = document.getElementById("emptyLoginBtn");
+      
+      if (emptyBrowseBtn) {
+        emptyBrowseBtn.addEventListener("click", () => {
+          console.log("[Instagram Sidecar Player] User clicked 'Open Reel Library' from empty state");
+          vscodeApi.postMessage({ type: "switchMode", mode: "library" });
+        });
+      }
+      
+      if (emptyLoginBtn) {
+        emptyLoginBtn.addEventListener("click", () => {
+          console.log("[Instagram Sidecar Player] User clicked 'Login' from empty state");
+          vscodeApi.postMessage({ type: "login" });
+        });
+      }
     }
 
     function extractShortcodeClient(input) {
